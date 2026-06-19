@@ -8,31 +8,65 @@ predicted-bracket graphics people post. Used for the README hero image and for
 the live bracket tab in the dashboard, so the bracket updates as views change.
 """
 
+import os
+import json
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 import config
 
 SHORT = {"Bosnia and Herzegovina": "Bosnia", "United States": "USA",
          "South Korea": "S. Korea", "Czech Republic": "Czechia",
-         "South Africa": "S. Africa", "Saudi Arabia": "Saudi Arabia",
-         "New Zealand": "New Zealand"}
+         "South Africa": "S. Africa", "Saudi Arabia": "Saudi", "Ivory Coast": "Ivory Coast",
+         "New Zealand": "N. Zealand", "Netherlands": "Netherlands", "Switzerland": "Switzerland"}
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_FLAG_DIR = os.path.join(_HERE, "images", "flags")
+try:
+    _CODES = json.load(open(os.path.join(_HERE, "flag_codes.json")))
+except Exception:
+    _CODES = {}
+_FLAG_CACHE = {}
 
 
 def _short(t):
     return SHORT.get(t, t)
 
 
-def _trophy(ax, cx, cy, gold="#d4af37", edge="#b8941f"):
-    """Draw a small gold World Cup-style trophy centred at (cx, cy bottom)."""
+def _flag(team):
+    """Return the flag image array for a team, or None if unavailable."""
+    if team in _FLAG_CACHE:
+        return _FLAG_CACHE[team]
+    img = None
+    code = _CODES.get(team)
+    if code:
+        path = os.path.join(_FLAG_DIR, code + ".png")
+        if os.path.exists(path):
+            try:
+                img = mpimg.imread(path)
+            except Exception:
+                img = None
+    _FLAG_CACHE[team] = img
+    return img
+
+
+def _trophy(ax, cx, cy, s=1.0, gold="#d4af37", edge="#b8941f"):
+    """Draw a gold World Cup-style trophy, base at (cx, cy), scaled by s."""
     from matplotlib.patches import Arc, Polygon, Rectangle
-    ax.add_patch(Rectangle((cx - 0.30, cy), 0.60, 0.10, facecolor=gold, edgecolor=edge, lw=0.5, zorder=5))
-    ax.add_patch(Rectangle((cx - 0.17, cy + 0.10), 0.34, 0.08, facecolor=gold, edgecolor=edge, lw=0.4, zorder=5))
-    ax.add_patch(Rectangle((cx - 0.05, cy + 0.18), 0.10, 0.20, facecolor=gold, edgecolor=edge, lw=0.4, zorder=5))
-    ax.add_patch(Arc((cx - 0.24, cy + 0.74), 0.34, 0.46, theta1=80, theta2=280, color=edge, lw=2.2, zorder=4))
-    ax.add_patch(Arc((cx + 0.24, cy + 0.74), 0.34, 0.46, theta1=260, theta2=100, color=edge, lw=2.2, zorder=4))
-    ax.add_patch(Polygon([(cx - 0.27, cy + 0.95), (cx + 0.27, cy + 0.95),
-                          (cx + 0.16, cy + 0.38), (cx - 0.16, cy + 0.38)],
+
+    def R(x, y, w, h, **k):
+        ax.add_patch(Rectangle((cx + x*s, cy + y*s), w*s, h*s, facecolor=gold,
+                               edgecolor=edge, **k))
+    R(-0.30, 0.00, 0.60, 0.10, lw=0.5, zorder=5)
+    R(-0.17, 0.10, 0.34, 0.08, lw=0.4, zorder=5)
+    R(-0.05, 0.18, 0.10, 0.20, lw=0.4, zorder=5)
+    ax.add_patch(Arc((cx - 0.24*s, cy + 0.74*s), 0.34*s, 0.46*s, theta1=80, theta2=280,
+                     color=edge, lw=2.2, zorder=4))
+    ax.add_patch(Arc((cx + 0.24*s, cy + 0.74*s), 0.34*s, 0.46*s, theta1=260, theta2=100,
+                     color=edge, lw=2.2, zorder=4))
+    ax.add_patch(Polygon([(cx - 0.27*s, cy + 0.95*s), (cx + 0.27*s, cy + 0.95*s),
+                          (cx + 0.16*s, cy + 0.38*s), (cx - 0.16*s, cy + 0.38*s)],
                          closed=True, facecolor=gold, edgecolor=edge, lw=0.6, zorder=6))
 
 
@@ -94,83 +128,162 @@ def _leaf_order():
 
 
 def render_poster(sim, eff_strength, win_probs, path=None, ax=None):
+    """Two-sided knockout bracket poster with flags, trophy and title odds."""
     res = predicted_bracket(sim, eff_strength)
-    leaves = _leaf_order()                       # 16 R32 matches, top->bottom
     champ = res[list(config.FINAL)[0]][2]
+
+    # children map, for walking each half of the draw
+    children = {}
+    for rnd in (config.ROUND_OF_16, config.QUARTERFINALS,
+                config.SEMIFINALS, config.FINAL):
+        children.update(rnd)
+
+    def leaves_of(root):
+        out = []
+        def walk(m):
+            if m in children:
+                walk(children[m][0]); walk(children[m][1])
+            else:
+                out.append(m)
+        walk(root)
+        return out
 
     own = ax is not None
     if not own:
-        fig, ax = plt.subplots(figsize=(15, 9))
-    ax.axis("off"); ax.set_xlim(0, 15); ax.set_ylim(0, 16.5)
+        fig, ax = plt.subplots(figsize=(16, 9.5))
+    W = 22.0
+    ax.axis("off"); ax.set_xlim(0, W); ax.set_ylim(0, 19.8)
 
-    def box(x, y, team, win=False, w=2.1):
-        c = "#1b9e77" if win else "#eef2f6"
-        tc = "white" if win else "#1a1a1a"
-        ax.add_patch(plt.Rectangle((x, y - 0.32), w, 0.64, facecolor=c,
-                     edgecolor="#9bb", lw=0.6, zorder=2))
-        ax.text(x + 0.1, y, _short(team), va="center", ha="left",
-                fontsize=8.0, color=tc, zorder=3,
+    BW, H = 2.35, 0.62                 # team-box width / height
+    YTOP, YBOT = 17.2, 1.2
+    block = (YTOP - YBOT) / 8.0        # vertical room per R32 match
+    TG, GAP = 0.5, 0.5
+
+    def box(x, y, team, win=False, w=BW):
+        fill = "#1b9e77" if win else "#f3f6f9"
+        tc = "white" if win else "#27313a"
+        ax.add_patch(plt.Rectangle((x, y - H/2), w, H, facecolor=fill,
+                     edgecolor=("#1b9e77" if win else "#d4dde4"), lw=0.7, zorder=2))
+        img = _flag(team)
+        tx = x + 0.16
+        if img is not None:
+            fw, fh = 0.46, 0.30
+            ax.imshow(img, extent=[x + 0.14, x + 0.14 + fw, y - fh/2, y + fh/2],
+                      zorder=3, aspect="auto")
+            tx = x + 0.14 + fw + 0.13
+        ax.text(tx, y, _short(team), va="center", ha="left",
+                fontsize=8.2, color=tc, zorder=3,
                 fontweight="bold" if win else "normal")
 
-    # column x positions: R32 teams, R16, QF, SF, Final-teams
-    xs = [0.2, 2.7, 5.0, 7.0, 8.9]
-    # R32: 16 matches => 32 team rows
-    ypos = {}
-    y = 16.0
-    step = 16.0 / 33
-    for mi, mno in enumerate(leaves):
-        ta, tb, w = res[mno]
-        ya, yb = y, y - step
-        box(xs[0], ya, ta, ta == w); box(xs[0], yb, tb, tb == w)
-        ypos[(mno, ta)] = ya; ypos[(mno, tb)] = yb
-        ypos[mno] = (ya + yb) / 2
-        y -= step * 2.05
+    # left columns (R32->SF, left edges) and mirrored right columns
+    LX = [0.2, 2.75, 5.25, 7.6]
+    RX = [W - 0.2 - BW, W - 2.75 - BW, W - 5.25 - BW, W - 7.6 - BW]
 
-    def draw_round(rnd, xi, prev_keys):
-        newpos = {}
-        for mno, (m1, m2) in rnd.items():
+    def draw_side(root, cols, sign):
+        leaves = leaves_of(root)
+        centers = {}
+        for i, mno in enumerate(leaves):
+            c = YTOP - block/2 - i * block
             ta, tb, w = res[mno]
-            ymid = (prev_keys[m1] + prev_keys[m2]) / 2
-            ya, yb = ymid + step * 0.55, ymid - step * 0.55
-            box(xs[xi], ya, ta, ta == w); box(xs[xi], yb, tb, tb == w)
-            # connectors
-            for src, yy in [(m1, ya), (m2, yb)]:
-                ax.plot([xs[xi-1] + 2.1, xs[xi]], [prev_keys[src], yy],
-                        color="#bcd", lw=0.6, zorder=1)
-            newpos[mno] = ymid
-        return newpos
+            box(cols[0], c + TG, ta, ta == w); box(cols[0], c - TG, tb, tb == w)
+            centers[mno] = c
+        prev_x = cols[0]
+        for ci, rnd in enumerate((config.ROUND_OF_16, config.QUARTERFINALS,
+                                  config.SEMIFINALS), start=1):
+            x = cols[ci]
+            side = {k: v for k, v in rnd.items()
+                    if v[0] in centers and v[1] in centers}
+            out = (prev_x + BW) if sign > 0 else prev_x
+            into = x if sign > 0 else (x + BW)
+            new = {}
+            for mno, (m1, m2) in side.items():
+                ta, tb, w = res[mno]
+                ymid = (centers[m1] + centers[m2]) / 2
+                ya, yb = ymid + GAP, ymid - GAP
+                box(x, ya, ta, ta == w); box(x, yb, tb, tb == w)
+                for src, yy in [(m1, ya), (m2, yb)]:
+                    ax.plot([out, into], [centers[src], yy],
+                            color="#cfd9e0", lw=0.8, zorder=1)
+                new[mno] = ymid
+            centers.update(new)
+            prev_x = x
+        return centers
 
-    p16 = draw_round(config.ROUND_OF_16, 1, {m: ypos[m] for m in leaves})
-    pqf = draw_round(config.QUARTERFINALS, 2, p16)
-    psf = draw_round(config.SEMIFINALS, 3, pqf)
-    # final two teams
-    fno = list(config.FINAL)[0]
-    fa, fb, fw = res[fno]
-    ymid = (psf[101] + psf[102]) / 2
-    box(xs[4], ymid + 0.5, fa, fa == fw); box(xs[4], ymid - 0.5, fb, fb == fw)
+    cL = draw_side(101, LX, +1)
+    cR = draw_side(102, RX, -1)
 
-    # champion banner + trophy above it
-    _trophy(ax, 12.7, ymid + 0.62)
-    ax.add_patch(plt.Rectangle((10.9, ymid - 0.55), 3.6, 1.1, facecolor="#d4af37",
+    # ---- centre: final, trophy, champion, title odds ----
+    fa, fb, fw = res[104]
+    fmid = (cL[101] + cR[102]) / 2.0
+    FBW = 1.9
+    fx = 11.0 - FBW/2
+    box(fx, fmid + 0.55, fa, fa == fw, w=FBW)
+    box(fx, fmid - 0.55, fb, fb == fw, w=FBW)
+    ax.plot([LX[3] + BW, fx], [cL[101], fmid + 0.55], color="#cfd9e0", lw=0.8, zorder=1)
+    ax.plot([RX[3], fx + FBW], [cR[102], fmid - 0.55], color="#cfd9e0", lw=0.8, zorder=1)
+
+    _trophy(ax, 11.0, fmid + 1.35, s=2.4)
+
+    # champion banner
+    by = fmid - 2.45
+    ax.add_patch(plt.Rectangle((9.25, by), 3.5, 1.12, facecolor="#d4af37",
                  edgecolor="none", zorder=2))
-    ax.text(12.7, ymid + 0.2, "PREDICTED CHAMPION", ha="center", fontsize=8,
-            color="#5a4a00", zorder=3)
-    ax.text(12.7, ymid - 0.2, _short(champ), ha="center", fontsize=16,
+    ax.text(11.0, by + 0.82, "PREDICTED CHAMPION", ha="center", fontsize=8,
+            color="#6a5500", zorder=3, fontweight="bold")
+    cimg = _flag(champ)
+    cx_text = 11.0
+    if cimg is not None:
+        ax.imshow(cimg, extent=[9.95, 10.45, by + 0.18, by + 0.52],
+                  zorder=3, aspect="auto")
+        cx_text = 11.15
+    ax.text(cx_text, by + 0.33, _short(champ), ha="center", fontsize=16,
             fontweight="bold", color="#1a1a1a", zorder=3)
 
-    # title probability panel
-    top = win_probs.sort_values(ascending=False).head(7)
-    ax.text(11.2, ymid - 1.7, "Title probability", fontsize=9, fontweight="bold")
+    # title probability panel (with flags)
+    top = win_probs.sort_values(ascending=False).head(8)
+    scale = 0.075
+    px, bar_l = 8.55, 10.75
+    ty = by - 0.7
+    ax.text(11.0, ty, "TITLE PROBABILITY (MONTE CARLO)", ha="center",
+            fontsize=9.5, fontweight="bold", color="#27313a")
     for i, (t, p) in enumerate(top.items()):
-        yy = ymid - 2.2 - i * 0.55
-        ax.barh(yy, p * 100 * 0.06, height=0.34, left=11.2, color="#1f77b4", zorder=2)
-        ax.text(11.15, yy, _short(t), ha="right", va="center", fontsize=7.5)
-        ax.text(11.3 + p*100*0.06, yy, f"{p*100:.1f}%", va="center", fontsize=7.5)
+        yy = ty - 0.65 - i * 0.62
+        fimg = _flag(t)
+        if fimg is not None:
+            ax.imshow(fimg, extent=[px, px + 0.42, yy - 0.14, yy + 0.14],
+                      zorder=3, aspect="auto")
+        ax.text(px + 0.55, yy, _short(t), va="center", ha="left", fontsize=9.5)
+        ax.barh(yy, p * 100 * scale, height=0.34, left=bar_l,
+                color="#e8b800", zorder=2)
+        ax.text(bar_l + p*100*scale + 0.12, yy, f"{p*100:.1f}%", va="center",
+                fontsize=9.5, fontweight="bold", color="#27313a")
 
-    for xi, lab in zip(xs, ["Round of 32", "Round of 16", "Quarters", "Semis", "Final"]):
-        ax.text(xi + 1.0, 16.45, lab, fontsize=8, color="#888", ha="center")
+    # ---- titles + column headers ----
+    ax.text(11.0, 19.3, "FIFA World Cup 2026: Predicted Knockout Bracket",
+            ha="center", fontsize=18, fontweight="bold", color="#1a1a1a")
+    ax.text(11.0, 18.75, "A Black-Litterman forecast, simulated through the "
+            "official 48-team knockout bracket.", ha="center", fontsize=9.5,
+            color="#6b7b8c")
+    ax.add_patch(plt.Rectangle((9.55, 18.05), 2.9, 0.42, facecolor="#1b9e77",
+                 edgecolor="none", zorder=2))
+    ax.text(11.0, 18.26, "PREDICTED  ·  9 JUNE 2026  ·  BEFORE KICKOFF",
+            ha="center", va="center", fontsize=7.5, color="white",
+            fontweight="bold", zorder=3)
+
+    heads = ["ROUND OF 32", "ROUND OF 16", "QUARTER\nFINALS", "SEMI\nFINALS"]
+    for x, lab in zip(LX, heads):
+        ax.text(x + BW/2, 17.75, lab, ha="center", va="center", fontsize=9,
+                fontweight="bold", color="#8a98a6", linespacing=0.95)
+    for x, lab in zip(RX, ["ROUND OF 32", "ROUND OF 16", "QUARTER\nFINALS",
+                           "SEMI\nFINALS"]):
+        ax.text(x + BW/2, 17.75, lab, ha="center", va="center", fontsize=9,
+                fontweight="bold", color="#8a98a6", linespacing=0.95)
+    ax.text(11.0, 17.75, "FINAL", ha="center", va="center", fontsize=9,
+            fontweight="bold", color="#8a98a6")
+
     if not own and path:
-        plt.tight_layout(); plt.savefig(path, dpi=120, bbox_inches="tight"); plt.close()
+        plt.savefig(path, dpi=130, bbox_inches="tight",
+                    facecolor="white"); plt.close()
     return champ
 
 
