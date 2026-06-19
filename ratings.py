@@ -261,6 +261,24 @@ class RatingModel:
         pL = np.triu(P, 1).sum()
         return pW, pD, pL
 
+    def scoreline_matrix(self, home, away, neutral=True, maxgoals=6):
+        """Full Dixon-Coles scoreline probability grid for a head-to-head, plus
+        each team's expected goals. P[i, j] = P(home scores i, away scores j)."""
+        from scipy.stats import poisson
+        ah, dh = self._eff(home); aa, da = self._eff(away)
+        eh = self.elo.get(home, 1500.0); ea = self.elo.get(away, 1500.0)
+        hf = 0.0 if neutral else 1.0
+        ed = (eh - ea) / 100.0
+        lam = np.exp(self.intercept + ah + da + self.home_coef * hf + self.elo_coef * ed)
+        mu = np.exp(self.intercept + aa + dh - self.elo_coef * ed)
+        x = np.arange(maxgoals + 1)
+        P = np.outer(poisson.pmf(x, lam), poisson.pmf(x, mu))
+        r = self.rho
+        P[0, 0] *= 1 - lam * mu * r; P[1, 0] *= 1 + mu * r
+        P[0, 1] *= 1 + lam * r;      P[1, 1] *= 1 - r
+        P = np.maximum(P, 0); P /= P.sum()
+        return P, float(lam), float(mu)
+
     def strength(self):
         """Single composite strength rating per team (net goals scale), blending
         the attack/defence supremacy with the standardised Elo term."""

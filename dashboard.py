@@ -201,7 +201,9 @@ fig.update_layout(barmode="group", height=420, yaxis_title="Win probability (%)"
 st.plotly_chart(fig, use_container_width=True)
 
 # ============================ tabs ============================
-t1, t2, t3, t4 = st.tabs(["🗺️ Predicted bracket", "📊 Full forecast", "🔀 Your views' effect", "📡 Live tracker"])
+t1, t2, t3, t4, t5, t6 = st.tabs(["🗺️ Predicted bracket", "📊 Full forecast",
+                                  "⚔️ Match simulator", "🅰️ By group",
+                                  "🔀 Your views' effect", "📡 Live tracker"])
 
 with t1:
     st.caption("The most-likely knockout bracket given current settings. Add views in the "
@@ -220,6 +222,42 @@ with t2:
     st.dataframe(tbl, use_container_width=True, height=520, hide_index=True)
 
 with t3:
+    st.caption("Pick any two teams for the model's head-to-head: expected goals, the "
+               "win/draw/loss split, and the full Dixon-Coles scoreline grid. Uses the "
+               "baseline ratings on a neutral venue.")
+    c1, c2 = st.columns(2)
+    ta = c1.selectbox("Team A", TEAMS, index=TEAMS.index("Spain"), key="msa")
+    tb = c2.selectbox("Team B", TEAMS, index=TEAMS.index("France"), key="msb")
+    if ta == tb:
+        st.info("Pick two different teams.")
+    else:
+        P, lam, mu = model.scoreline_matrix(ta, tb, neutral=True, maxgoals=6)
+        pW = float(np.tril(P, -1).sum()); pD = float(np.trace(P)); pL = float(np.triu(P, 1).sum())
+        m1, m2, m3 = st.columns(3)
+        m1.metric(f"{ta} win", f"{pW*100:.0f}%", f"xG {lam:.2f}")
+        m2.metric("Draw", f"{pD*100:.0f}%")
+        m3.metric(f"{tb} win", f"{pL*100:.0f}%", f"xG {mu:.2f}")
+        z = P * 100
+        fig_h = go.Figure(data=go.Heatmap(
+            z=z, x=[str(i) for i in range(z.shape[1])], y=[str(i) for i in range(z.shape[0])],
+            colorscale="Blues", showscale=False,
+            text=[[f"{v:.1f}%" for v in row] for row in z], texttemplate="%{text}"))
+        fig_h.update_layout(height=430, margin=dict(t=40, b=10),
+                            title="Dixon-Coles scoreline probabilities",
+                            xaxis_title=f"{tb} goals", yaxis_title=f"{ta} goals")
+        st.plotly_chart(fig_h, use_container_width=True)
+
+with t4:
+    st.caption("Every team's chance of topping its group, advancing, and reaching each round.")
+    g = st.selectbox("Group", list(config.GROUPS.keys()), key="grp")
+    gdf = full[full.team.isin(config.GROUPS[g])][
+        ["team", "round32", "round16", "quarter", "semi", "final", "win"]].copy()
+    gdf.columns = ["Team", "Advance (R32)", "Reach R16", "Reach QF", "Reach SF", "Reach final", "Win"]
+    for c in gdf.columns[1:]:
+        gdf[c] = (gdf[c]*100).round(1).astype(str) + "%"
+    st.dataframe(gdf, use_container_width=True, hide_index=True)
+
+with t5:
     st.caption("How your views shifted each team's strength rating (posterior − prior). Empty until you add a view.")
     nz = [t for t in sorted(TEAMS, key=lambda t: shift[t]) if abs(shift[t]) > 1e-6]
     if nz:
@@ -230,7 +268,7 @@ with t3:
     else:
         st.info("Add a view in the sidebar to see its effect here.")
 
-with t4:
+with t6:
     st.caption("How the baseline did on 2026 games already played (pre-match probabilities vs actual results).")
     played = load_matches()
     played = played[(played.tournament == "FIFA World Cup") & (played.date.dt.year == 2026)]
