@@ -5,9 +5,9 @@
 **A statistical World Cup model you can impose your own football judgement on, using the Black-Litterman framework from portfolio management.**
 Built with Python, pandas, scikit-learn, scipy, Streamlit and Plotly.
 
-### 🔗 [**Try the live interactive dashboard →**](https://ftofp66vce4peravbgfywh.streamlit.app/)
+### 🔗 [**Try the live interactive dashboard →**](https://world-cup-black-litterman-model-6b7d8lkdzw5fjmkba4mqhq.streamlit.app/)
 
-Set your own views, watch the bracket re-forecast live, and compare the model to the betting market. No installation needed.
+Set your own views and watch the bracket re-forecast live, simulate any head-to-head with Dixon-Coles scoreline probabilities, see per-group advancement odds, and compare the model to the betting market. No installation needed.
 
 ---
 
@@ -139,7 +139,7 @@ Stated plainly, because pretending a model is perfect is the fastest way to lose
 
 ## 9. Running it
 
-The easiest way is the **[hosted dashboard](https://ftofp66vce4peravbgfywh.streamlit.app/)**, no setup required. To run it locally instead:
+The easiest way is the **[hosted dashboard](https://world-cup-black-litterman-model-6b7d8lkdzw5fjmkba4mqhq.streamlit.app/)**, no setup required. To run it locally instead:
 
 ```bash
 pip install -r requirements.txt
